@@ -1,6 +1,7 @@
 package usbmux
 
 import (
+	"crypto/tls"
 	"io"
 	"net"
 	"reflect"
@@ -18,15 +19,6 @@ type Codec interface {
 	Decode(io.Reader) error
 }
 
-// DeviceConnectionInterface contains a physical network connection to a usbmuxd socket.
-type DeviceConnectionInterface interface {
-	Connect(activeCodec Codec)
-	ConnectToSocketAddress(activeCodec Codec, socketAddress string)
-	Close()
-	SendForProtocolUpgrade(muxConnection *MuxConnection, message interface{}, newCodec Codec) []byte
-	Send(message interface{})
-}
-
 //DeviceConnection wraps the net.Conn to the ios Device and has support for
 //switching Codecs and enabling SSL
 type DeviceConnection struct {
@@ -35,14 +27,8 @@ type DeviceConnection struct {
 	stop        chan struct{}
 }
 
-//Connect connects to the USB multiplexer daemon using  the default address: '/var/run/usbmuxd'
-func (conn *DeviceConnection) Connect(activeCodec Codec) {
-	conn.ConnectToSocketAddress(activeCodec, usbmuxdSocket)
-}
-
-//ConnectToSocketAddress connects to the USB multiplexer with a specified socket addres
-func (conn *DeviceConnection) ConnectToSocketAddress(activeCodec Codec, socketAddress string) {
-	c, err := net.Dial("unix", socketAddress)
+func (conn *DeviceConnection) connect(activeCodec Codec) {
+	c, err := net.Dial("unix", usbmuxdSocket)
 	if err != nil {
 		log.Fatal("Could not connect to usbmuxd socket, is it running?", err)
 	}
@@ -51,22 +37,21 @@ func (conn *DeviceConnection) ConnectToSocketAddress(activeCodec Codec, socketAd
 	conn.c = c
 	conn.activeCodec = activeCodec
 	conn.startReading()
+
 }
 
-//Close closes the network connection
-func (conn *DeviceConnection) Close() {
+func (conn *DeviceConnection) close() {
 	log.Debug("Closing connection:", &conn.c)
 	var sig struct{}
 	go func() { conn.stop <- sig }()
 	conn.c.Close()
 }
 
-//Send sends a message
-func (conn *DeviceConnection) Send(message interface{}) {
+func (conn *DeviceConnection) send(message interface{}) {
 	bytes, err := conn.activeCodec.Encode(message)
 	if err != nil {
 		log.Errorf("Deviceconnection failed sending data %s", err)
-		conn.Close()
+		conn.close()
 		return
 	}
 	conn.c.Write(bytes)
@@ -82,7 +67,7 @@ func reader(conn *DeviceConnection) {
 		default:
 			if err != nil {
 				log.Errorf("Failed decoding/reading %s", err)
-				conn.Close()
+				conn.close()
 				return
 			}
 		}
@@ -90,7 +75,7 @@ func reader(conn *DeviceConnection) {
 
 }
 
-//SendForProtocolUpgrade takes care of the complicated protocol upgrade process of iOS/Usbmux.
+//sendForProtocolUpgrade takes care of the complicated protocol upgrade process of iOS/Usbmux.
 //First, a Connect Message is sent to usbmux using the UsbMux Codec
 //Second, wait for the Mux Response also in UsbMuxCodec and stop reading immediately after receiving it
 //since this is network connection, it could be that the MuxResponse is immediately followed by
@@ -98,10 +83,10 @@ func reader(conn *DeviceConnection) {
 //To Prevent this, stop reading immediately after reading the response.
 //Third, set the new codec and start reading again
 //It returns the usbMuxResponse as a []byte
-func (conn *DeviceConnection) SendForProtocolUpgrade(muxConnection *MuxConnection, message interface{}, newCodec Codec) []byte {
+func (conn *DeviceConnection) sendForProtocolUpgrade(muxConnection *MuxConnection, message interface{}, newCodec Codec) []byte {
 	log.Debug("Protocol update to ", reflect.TypeOf(newCodec), " on ", &conn.c)
 	conn.stopReadingAfterNextMessage()
-	conn.Send(message)
+	conn.send(message)
 	responseBytes := <-muxConnection.ResponseChannel
 	conn.activeCodec = newCodec
 	conn.startReading()
@@ -115,4 +100,23 @@ func (conn *DeviceConnection) stopReadingAfterNextMessage() {
 
 func (conn *DeviceConnection) startReading() {
 	go reader(conn)
+}
+
+func (conn *DeviceConnection) enableSessionSsl(pairRecord PairRecord) {
+	cert5, error5 := tls.X509KeyPair(pairRecord.HostCertificate, pairRecord.HostPrivateKey)
+	if error5 != nil {
+		return
+	}
+	conf := &tls.Config{
+		//We always trust whatever the phone sends, I do not see an issue here as probably
+		//nobody would build a fake iphone to hack this library.
+		InsecureSkipVerify: true,
+		Certificates:       []tls.Certificate{cert5},
+		ClientAuth:         tls.NoClientCert,
+	}
+
+	var tlsConn *tls.Conn
+	tlsConn = tls.Client(conn.c, conf)
+	log.Debug("enable session ssl on", &conn.c, " and wrap with tlsConn", &tlsConn)
+	conn.c = net.Conn(tlsConn)
 }

@@ -3,7 +3,7 @@ package usbmux
 import (
 	"bytes"
 
-	plist "howett.net/plist"
+	plist "github.com/DHowett/go-plist"
 )
 
 //MuxResponse is a generic response message sent by usbmuxd
@@ -13,8 +13,7 @@ type MuxResponse struct {
 	Number      uint32
 }
 
-// MuxResponsefromBytes parses a MuxResponse struct from bytes
-func MuxResponsefromBytes(plistBytes []byte) MuxResponse {
+func usbMuxResponsefromBytes(plistBytes []byte) MuxResponse {
 	decoder := plist.NewDecoder(bytes.NewReader(plistBytes))
 	var usbMuxResponse MuxResponse
 	_ = decoder.Decode(&usbMuxResponse)

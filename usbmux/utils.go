@@ -3,11 +3,11 @@ package usbmux
 import (
 	"bytes"
 
-	plist "howett.net/plist"
+	plist "github.com/DHowett/go-plist"
 )
 
-//ToPlist converts a given struct to a Plist using the
-//github.com/DHowett/go-plist library. Make sure your struct is exported.
+//ToPlist converts a given struct to a Plist using the awesome
+//github.com/DHowett/go-plist library.
 //It returns a string containing the plist.
 func ToPlist(data interface{}) string {
 	buf := &bytes.Buffer{}

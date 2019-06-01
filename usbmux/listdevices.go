@@ -2,9 +2,8 @@ package usbmux
 
 import (
 	"bytes"
-	"strings"
 
-	plist "howett.net/plist"
+	plist "github.com/DHowett/go-plist"
 )
 
 //ReadDevicesType contains all the data necessary to request a DeviceList from
@@ -22,14 +21,11 @@ func deviceListfromBytes(plistBytes []byte) DeviceList {
 	return deviceList
 }
 
-//String returns a list of all udids in a formatted string
-func (deviceList DeviceList) String() string {
-	var sb strings.Builder
+//Print all udids to the console
+func (deviceList DeviceList) Print() {
 	for _, element := range deviceList.DeviceList {
-		sb.WriteString(element.Properties.SerialNumber)
-		sb.WriteString("\n")
+		println(element.Properties.SerialNumber)
 	}
-	return sb.String()
 }
 
 //DeviceList is a simple wrapper for a
@@ -58,9 +54,7 @@ type DeviceProperties struct {
 	SerialNumber    string
 }
 
-// NewReadDevices creates a struct containing a request for a device list that can be sent
-// to UsbMuxD.
-func NewReadDevices() *ReadDevicesType {
+func newReadDevices() *ReadDevicesType {
 	data := &ReadDevicesType{
 		MessageType:         "ListDevices",
 		ProgName:            "go-usbmux",
@@ -72,8 +66,8 @@ func NewReadDevices() *ReadDevicesType {
 //ListDevices returns a DeviceList containing data about all
 //currently connected iOS devices
 func (muxConn *MuxConnection) ListDevices() DeviceList {
-	msg := NewReadDevices()
-	muxConn.Send(msg)
+	msg := newReadDevices()
+	muxConn.deviceConn.send(msg)
 	response := <-muxConn.ResponseChannel
 	return deviceListfromBytes(response)
 }

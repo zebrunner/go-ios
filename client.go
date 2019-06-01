@@ -1,10 +1,20 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-	"usbmuxd/usbmux"
+	"io/ioutil"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"time"
 
+	"github.com/danielpaulus/go-ios/usbmux"
+	"github.com/danielpaulus/go-ios/usbmux/diagnostics"
+	"github.com/danielpaulus/go-ios/usbmux/forward"
+	"github.com/danielpaulus/go-ios/usbmux/screenshotr"
+	"github.com/danielpaulus/go-ios/usbmux/syslog"
 	docopt "github.com/docopt/docopt-go"
 	log "github.com/sirupsen/logrus"
 )
@@ -97,58 +107,57 @@ Options:
 
 func startForwarding(device usbmux.DeviceEntry, hostPort int, targetPort int) {
 
-	// forward.Forward(device, uint16(hostPort), uint16(targetPort))
-	// c := make(chan os.Signal, 1)
-	// signal.Notify(c, os.Interrupt)
-	// <-c
+	forward.Forward(device, uint16(hostPort), uint16(targetPort))
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	<-c
 }
 
 func printDiagnostics(device usbmux.DeviceEntry) {
-	// log.Debug("print diagnostics")
-	// diagnosticsService := diagnostics.New(device.DeviceID, device.Properties.SerialNumber)
-	// fmt.Println(formatOutput(diagnosticsService.AllValues()))
+	log.Debug("print diagnostics")
+	diagnosticsService := diagnostics.New(device.DeviceID, device.Properties.SerialNumber)
+	fmt.Println(formatOutput(diagnosticsService.AllValues()))
 }
 
 func printDeviceDate(device usbmux.DeviceEntry) {
-	// allValues := getValues(device)
+	allValues := getValues(device)
 
-	// fmt.Println(time.Unix(int64(allValues.Value.TimeIntervalSince1970), 0).Format(time.RFC850))
+	fmt.Println(time.Unix(int64(allValues.Value.TimeIntervalSince1970), 0).Format(time.RFC850))
 
 }
 
 func printDeviceName(device usbmux.DeviceEntry) {
-	// allValues := getValues(device)
-	// println(allValues.Value.DeviceName)
+	allValues := getValues(device)
+	println(allValues.Value.DeviceName)
 }
 
 func saveScreenshot(device usbmux.DeviceEntry, outputPath string) {
-	// log.Debug("take screenshot")
-	// screenshotrService := screenshotr.New(device.DeviceID, device.Properties.SerialNumber)
-	// imageBytes := screenshotrService.TakeScreenshot()
-	// if outputPath == "" {
-	// 	time := time.Now().Format("20060102150405")
-	// 	path, _ := filepath.Abs("./screenshot" + time + ".png")
-	// 	outputPath = path
-	// }
-	// err := ioutil.WriteFile(outputPath, imageBytes, 0777)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// log.Info(outputPath)
+	log.Debug("take screenshot")
+	screenshotrService := screenshotr.New(device.DeviceID, device.Properties.SerialNumber)
+	imageBytes := screenshotrService.TakeScreenshot()
+	if outputPath == "" {
+		time := time.Now().Format("20060102150405")
+		path, _ := filepath.Abs("./screenshot" + time + ".png")
+		outputPath = path
+	}
+	err := ioutil.WriteFile(outputPath, imageBytes, 0777)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Info(outputPath)
 }
 
 func printDeviceList(details bool) {
 	deviceList := usbmux.ListDevices()
-	println(deviceList.String())
-	// if details {
-	// 	for _, device := range deviceList.DeviceList {
-	// 		udid := device.Properties.SerialNumber
-	// 		allValues := getValues(device)
-	// 		fmt.Printf("%s  %s  %s %s", udid, allValues.Value.ProductName, allValues.Value.ProductType, allValues.Value.ProductVersion)
-	// 	}
-	// } else {
-	// 	deviceList.Print()
-	// }
+	if details {
+		for _, device := range deviceList.DeviceList {
+			udid := device.Properties.SerialNumber
+			allValues := getValues(device)
+			fmt.Printf("%s  %s  %s %s", udid, allValues.Value.ProductName, allValues.Value.ProductType, allValues.Value.ProductVersion)
+		}
+	} else {
+		deviceList.Print()
+	}
 }
 
 func getDeviceOrQuit(udid string) (usbmux.DeviceEntry, error) {
@@ -169,54 +178,53 @@ func getDeviceOrQuit(udid string) (usbmux.DeviceEntry, error) {
 
 func printDeviceInfo(device usbmux.DeviceEntry) {
 
-	// allValues := getValues(device)
+	allValues := getValues(device)
 
-	// fmt.Println(formatOutput(allValues.Value))
+	fmt.Println(formatOutput(allValues.Value))
 }
 
 func runSyslog(device usbmux.DeviceEntry) {
-	// log.Debug("Run Syslog.")
-	// syslogConnection := syslog.New(device.DeviceID, device.Properties.SerialNumber)
-	// defer syslogConnection.Close()
+	log.Debug("Run Syslog.")
+	syslogConnection := syslog.New(device.DeviceID, device.Properties.SerialNumber)
+	defer syslogConnection.Close()
 
-	// go func() {
-	// 	for {
-	// 		print(<-syslogConnection.LogReader)
-	// 	}
-	// }()
-	// c := make(chan os.Signal, 1)
-	// signal.Notify(c, os.Interrupt)
-	// <-c
+	go func() {
+		for {
+			print(<-syslogConnection.LogReader)
+		}
+	}()
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	<-c
 }
 
-// func getValues(device usbmux.DeviceEntry) usbmux.GetAllValuesResponse {
-// 	muxConnection := usbmux.NewUsbMuxConnection()
-// 	defer muxConnection.Close()
+func getValues(device usbmux.DeviceEntry) usbmux.GetAllValuesResponse {
+	muxConnection := usbmux.NewUsbMuxConnection()
+	defer muxConnection.Close()
 
-// 	pairRecord := muxConnection.ReadPair(device.Properties.SerialNumber)
+	pairRecord := muxConnection.ReadPair(device.Properties.SerialNumber)
 
-// 	lockdownConnection, err := muxConnection.ConnectLockdown(device.DeviceID)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	lockdownConnection.StartSession(pairRecord)
+	lockdownConnection, err := muxConnection.ConnectLockdown(device.DeviceID)
+	if err != nil {
+		log.Fatal(err)
+	}
+	lockdownConnection.StartSession(pairRecord)
 
-// 	allValues := lockdownConnection.GetValues()
-// 	lockdownConnection.StopSession()
-// 	return allValues
-// }
+	allValues := lockdownConnection.GetValues()
+	lockdownConnection.StopSession()
+	return allValues
+}
 
 func pairDevice(device usbmux.DeviceEntry) {
-	// err := usbmux.Pair(device)
-	// if err != nil {
-	// 	println(err)
-	// } else {
-	// 	fmt.Printf("Paired %s", device.Properties.SerialNumber)
-	// }
+	err := usbmux.Pair(device)
+	if err != nil {
+		println(err)
+	} else {
+		fmt.Printf("Paired %s", device.Properties.SerialNumber)
+	}
 
 }
 
-/*
 func formatOutput(data interface{}) string {
 	b, err2 := json.Marshal(data)
 	if err2 != nil {
@@ -224,4 +232,4 @@ func formatOutput(data interface{}) string {
 		return ""
 	}
 	return string(b)
-}*/
+}
