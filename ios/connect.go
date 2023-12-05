@@ -2,6 +2,10 @@ package ios
 
 import (
 	"fmt"
+	"net"
+	"strings"
+
+	"github.com/danielpaulus/go-ios/ios/xpc"
 )
 
 type connectMessage struct {
@@ -77,7 +81,6 @@ func (muxConn *UsbMuxConnection) ConnectLockdown(deviceID int) (*LockDownConnect
 	return nil, fmt.Errorf("Failed connecting to Lockdown with error code:%d", response.Number)
 }
 
-// ConnectToService connects to a service on the phone and returns the ready to use DeviceConnectionInterface
 func ConnectToService(device DeviceEntry, serviceName string) (DeviceConnectionInterface, error) {
 	startServiceResponse, err := StartService(device, serviceName)
 	if err != nil {
@@ -97,6 +100,46 @@ func ConnectToService(device DeviceEntry, serviceName string) (DeviceConnectionI
 		return nil, err
 	}
 	return muxConn.ReleaseDeviceConnection(), nil
+}
+
+func ConnectToXpcServiceTunnelIface(device DeviceEntry, serviceName string) (*xpc.Connection, error) {
+	deviceInterface, err := connectToServiceTunnelIface(device, serviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	xpcConn, err := xpc.New(deviceInterface.Conn())
+	if err != nil {
+		return nil, err
+	}
+
+	return xpcConn, nil
+}
+
+func ConnectToDtServiceOverTunnelIface(device DeviceEntry, serviceName string) (DeviceConnectionInterface, error) {
+	conn, err := connectToServiceTunnelIface(device, serviceName)
+	if err != nil {
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+func connectToServiceTunnelIface(device DeviceEntry, serviceName string) (*DeviceConnection, error) {
+	port := device.Rsd.GetPort(serviceName)
+	conn, err := net.Dial("tcp6", fmt.Sprintf("[%s]:%d", device.Address, port))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to device. %w", err)
+	}
+	if !strings.Contains(serviceName, "testmanager") && !strings.Contains(serviceName, "appservice") {
+		err = RsdCheckin(conn)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	deviceConnection := NewDeviceConnectionWithConn(conn)
+	return deviceConnection, nil
 }
 
 // connectWithStartServiceResponse issues a Connect Message to UsbMuxd for the given deviceID on the given port
