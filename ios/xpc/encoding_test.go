@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"testing"
-
 )
 
 func TestEmptyDictionary(t *testing.T) {
