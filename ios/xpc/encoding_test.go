@@ -3,6 +3,8 @@ package xpc
 import (
 	"bytes"
 	"encoding/base64"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"os"
 	"path"
 	"testing"
@@ -107,6 +109,7 @@ func TestEncodeDecode(t *testing.T) {
 					"int64":  int64(123),
 					"uint64": uint64(321),
 					"data":   []byte{0x1},
+					"double": float64(1.2),
 				},
 			},
 			expectedFlags: alwaysSetFlag | dataFlag,
@@ -122,6 +125,16 @@ func TestEncodeDecode(t *testing.T) {
 			name: "dictionary with array",
 			input: map[string]interface{}{
 				"array": []interface{}{uint64(1), uint64(2), uint64(3)},
+			},
+			expectedFlags: alwaysSetFlag | dataFlag,
+		},
+		{
+			name: "encode uuid",
+			input: map[string]interface{}{
+				"uuidvalue": func() uuid.UUID {
+					u, _ := uuid.FromBytes(base64Decode("RYjS2yNAbEG+Y0WWxq5/4w=="))
+					return u
+				}(),
 			},
 			expectedFlags: alwaysSetFlag | dataFlag,
 		},
