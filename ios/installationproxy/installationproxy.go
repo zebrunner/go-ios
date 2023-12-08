@@ -3,6 +3,7 @@ package installationproxy
 import (
 	"bytes"
 	"fmt"
+
 	log "github.com/sirupsen/logrus"
 
 	ios "github.com/danielpaulus/go-ios/ios"
@@ -27,12 +28,21 @@ func New(device ios.DeviceEntry) (*Connection, error) {
 	}
 	return &Connection{deviceConn: deviceConn, plistCodec: ios.NewPlistCodec()}, nil
 }
+
 func (conn *Connection) BrowseUserApps() ([]AppInfo, error) {
-	return conn.browseApps(browseUserApps())
+	return conn.browseApps(browseApps("User", true))
 }
 
 func (conn *Connection) BrowseSystemApps() ([]AppInfo, error) {
-	return conn.browseApps(browseSystemApps())
+	return conn.browseApps(browseApps("System", false))
+}
+
+func (conn *Connection) BrowseFileSharingApps() ([]AppInfo, error) {
+	return conn.browseApps(browseApps("Filesharing", true))
+}
+
+func (conn *Connection) BrowseAllApps() ([]AppInfo, error) {
+	return conn.browseApps(browseApps("", true))
 }
 
 func (conn *Connection) browseApps(request interface{}) ([]AppInfo, error) {
@@ -59,7 +69,6 @@ func (conn *Connection) browseApps(request interface{}) ([]AppInfo, error) {
 
 	for _, v := range responses {
 		copy(appinfos[v.CurrentIndex:], v.CurrentList)
-
 	}
 	return appinfos, nil
 }
@@ -123,7 +132,8 @@ func plistFromBytes(plistBytes []byte) (BrowseResponse, error) {
 	}
 	return browseResponse, nil
 }
-func browseSystemApps() map[string]interface{} {
+
+func browseApps(applicationType string, showLaunchProhibitedApps bool) map[string]interface{} {
 	returnAttributes := []string{
 		"ApplicationDSID",
 		"ApplicationType",
@@ -143,39 +153,16 @@ func browseSystemApps() map[string]interface{} {
 		"SignerIdentity",
 		"UIDeviceFamily",
 		"UIRequiredDeviceCapabilities",
+		"UIFileSharingEnabled",
 	}
 	clientOptions := map[string]interface{}{
-		"ApplicationType":  "System",
 		"ReturnAttributes": returnAttributes,
 	}
-	return map[string]interface{}{"ClientOptions": clientOptions, "Command": "Browse"}
-}
-
-func browseUserApps() map[string]interface{} {
-	returnAttributes := []string{
-		"ApplicationDSID",
-		"ApplicationType",
-		"CFBundleDisplayName",
-		"CFBundleExecutable",
-		"CFBundleIdentifier",
-		"CFBundleName",
-		"CFBundleShortVersionString",
-		"CFBundleVersion",
-		"Container",
-		"Entitlements",
-		"EnvironmentVariables",
-		"MinimumOSVersion",
-		"Path",
-		"ProfileValidated",
-		"SBAppTags",
-		"SignerIdentity",
-		"UIDeviceFamily",
-		"UIRequiredDeviceCapabilities",
+	if applicationType != "" && applicationType != "Filesharing" {
+		clientOptions["ApplicationType"] = applicationType
 	}
-	clientOptions := map[string]interface{}{
-		"ApplicationType":          "User",
-		"ReturnAttributes":         returnAttributes,
-		"ShowLaunchProhibitedApps": true,
+	if showLaunchProhibitedApps {
+		clientOptions["ShowLaunchProhibitedApps"] = true
 	}
 	return map[string]interface{}{"ClientOptions": clientOptions, "Command": "Browse"}
 }
@@ -205,4 +192,5 @@ type AppInfo struct {
 	SignerIdentity               string
 	UIDeviceFamily               []int
 	UIRequiredDeviceCapabilities []string
+	UIFileSharingEnabled         bool
 }
